@@ -1,0 +1,40 @@
+{
+    "dbServer": {
+        "database": "discover",
+        "host": "mongodb://localhost:27017/oa_discover"
+    },
+    "webServer": {
+        "url": "http://localhost:3007",
+        "port": 3007
+    },
+    "queueServer": {
+        "disabled": true
+    },
+    "system": {
+        "name": "Open Age",
+        "emailId": "no_reply@openage.in"
+    },
+    "auth": {
+        "provider": "directory"
+    },
+    "logger": {
+        "console": {
+            "level": "silly",
+            "handleExceptions": true,
+            "json": false,
+            "colorize": true
+        }
+    },
+    "providers": {
+        "google": {
+            "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+            "api_Key": "placeholder"
+        },
+        "directory": {
+            "url": "http://localhost:3001/api"
+        },
+        "send-it": {
+            "url": "http://localhost:3002/api"
+        }
+    }
+}
