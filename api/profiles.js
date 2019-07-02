@@ -1,6 +1,34 @@
 'use strict'
-var mapper = require('../mappers/profile')
+const mapper = require('../mappers/profile')
 const profileService = require('../services/profiles')
+const pagingHelper = require('../helpers/paging')
+
+exports.create = async (req) => {
+    let entity = {}
+
+    if (req.body.entity) {
+        entity = req.body.entity
+    } else if (req.query['entity-type']) {
+        entity.type = req.query['entity-type']
+        entity.id = req.query['entity-id']
+    } else if (req.params.entityType) {
+        entity.type = req.params.entityType
+        entity.id = req.params.entityId
+    } else {
+        entity.type = 'role'
+        entity.id = req.context.role.id
+    }
+
+    let profile = await profileService.getByEntity(entity, req.context)
+
+    if (!profile) {
+        profile = await profileService.create(req.body, req.context)
+    } else {
+        profile = await profileService.update(profile.id, req.body, req.context)
+    }
+
+    return mapper.toModel(profile)
+}
 
 exports.update = async (req) => {
     let entity = await profileService.update(req.context.profile.id, req.body, req.context)
@@ -18,13 +46,12 @@ exports.get = async (req) => {
 
 // only active and
 exports.search = async (req) => {
-    if (req.context.profile.status === 'inComplete') {
-        throw new Error('complete your profile to search')
-    }
+    let page = pagingHelper.extract(req)
 
-    let profiles = await profileService.discover(req.query, req.context)
+    let result = await profileService.discover(req.query, page, req.context)
 
     return {
-        items: profiles.map(mapper.toModel)
+        items: mapper.toSearchModel(result.items),
+        count: result.count
     }
 }

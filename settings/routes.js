@@ -71,6 +71,14 @@ module.exports.configure = (app, logger) => {
             method: 'invite',
             filter: auth.requiresRoleKey
         }])
+        api.model('preferences')
+        .register('REST', auth.requiresRoleKey)
+        .register([{
+            action: 'POST',
+            url: '/invite',
+            method: 'invite',
+            filter: auth.requiresRoleKey
+        }])
 
     api.model('connections')
         .register('REST', auth.requiresRoleKey)

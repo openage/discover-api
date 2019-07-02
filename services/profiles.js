@@ -3,7 +3,7 @@
 const db = require('../models')
 
 const interestService = require('./interests')
-
+const preferenceService = require('./preferences')
 exports.create = async (model, context) => {
     model.tenant = context.tenant
     let profile = new db.profile(model)
@@ -12,7 +12,7 @@ exports.create = async (model, context) => {
 }
 
 exports.update = async (id, model, context) => {
-    const entity = await db.profile.findById(id).populate('interests')
+    const entity = await db.profile.findById(id).populate('interests preferences')
     if (model.interests && model.interests.length) {
         entity.interests = []
 
@@ -20,7 +20,17 @@ exports.update = async (id, model, context) => {
             entity.interests.push(await interestService.get(interest))
         }
     }
-
+    if (model.preferences) {
+        let preferences = await preferenceService.get({
+            profile: {
+                id: context.profile.id
+            },
+            preferences: model.preferences
+        }, context)
+        if (preferences) {
+            entity.preferences = await preferenceService.update(model.preferences, preferences, context)
+        }
+    }
     if (model.images && model.images.length) {
         for (const image of model.images) {
             let existing = entity.images.find(item => item.url.toLowerCase() === image.url.toLowerCase())
@@ -69,47 +79,93 @@ exports.update = async (id, model, context) => {
     return entity.save()
 }
 
-exports.discover = async (query, context) => {
-    var where = {}
-
-    where.status = {
-        $eq: 'active'
+const extractQuery = (params, context) => {
+    let where = {
+        tenant: toObjectId(context.tenant.id)
     }
 
-    where._id = {
-        $ne: context.profile.id,
-        $nin: context.profile.connections.filter(item => item.status === 'active').map(item => item.profile)
-    }
+    where.status = { $eq: 'active' }
 
-    // var name = query.name
+    if (!params) { return where }
 
-    if (query.interests) {
-        where.interests = {
-            $all: query.interests
+    for (let key in params) {
+        if (key.toLowerCase().startsWith('sort') || key == 'limit' || key == 'skip') {
+            continue
         }
-    }
 
-    if (query.around && context.profile.location && context.profile.location.coordinates) {
-        where['location.coordinates'] = {
-            $geoWithin: {
-                $centerSphere: [context.profile.location.coordinates, Number(query.around) / 3963.2]
-            }
+        let value = params[key]
+
+        if (!value) { continue }
+
+        let operator = value.includes(':') ? ('$' + value.split(':')[0]) : '$eq'
+
+        key = key.replace('/_/gi', '.')
+
+        if (where.hasOwnProperty(key)) {
+            where[key][operator] = value
+        } else {
+            where[key] = new Object()
+            where[key][operator] = value
         }
+
     }
 
+    // let interests = params.interests || context.getConfig('interests')
+    // if (interests) {
+    //     where.interests = {
+    //         $all: interests
+    //     }
+    // }
+
+    // if (context.config) {
+    //     if (context.config.lookingFor) {
+    //         if (context.config.lookingFor.gender) {
+    //             where['gender'] = context.config.lookingFor.gender
+    //         }
+    //         if (context.config.lookingFor.age) {
+    //             if (context.config.lookingFor.age.start) {
+    //                 where['age'] = {
+    //                     $gte: context.config.lookingFor.age.start
+    //                 }
+    //             }
+    //             if (context.config.lookingFor.age.end) {
+    //                 where['age'] = {
+    //                     $lte: context.config.lookingFor.age.end
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // if (params.around && context.profile.location && context.profile.location.coordinates) {
+    //     where['location.coordinates'] = {
+    //         $geoWithin: {
+    //             $centerSphere: [context.profile.location.coordinates, Number(params.around) / 3963.2]
+    //         }
+    //     }
+    // }
+    return where
+}
+
+exports.discover = async (query, page, context) => {
+    let where = extractQuery(query, context)
+    let finder = [{
+        $match: where
+    }]
     context.logger.debug('query', where)
 
-    let profiles = await db.profile.find(where)
+    let profiles = await db.profile.aggregate(finder)
 
-    profiles.forEach(item => {
-        item.connnectionStatus = getConnectionStatus(item, context)
-    })
+    let count = await db.profile.find(where).count()
 
-    return profiles
+    return {
+        items: profiles,
+        count: count
+    }
 }
 
 exports.get = async (id, context) => {
-    let entity = await db.profile.findById(id).populate('interests')
+    let entity = await db.profile.findById(id).populate('interests preferences')
 
     if (context.profile.id !== id) {
         entity.connnectionStatus = getConnectionStatus(entity, context)
@@ -133,3 +189,14 @@ var getConnectionStatus = (profile, context) => {
 
     return connnection.status
 }
+
+const getByEntity = async (entity, context) => {
+    if (!entity || !entity.id) { return }
+
+    return db.profile.findOne({
+        'entity.id': entity.id,
+        'entity.type': entity.type
+    })
+}
+
+exports.getByEntity = getByEntity

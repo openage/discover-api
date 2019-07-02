@@ -1,6 +1,6 @@
 {
     "name": "discover-api",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Discover Backend",
     "repository": {
         "type": "git",
@@ -12,7 +12,7 @@
         "rating",
         "near"
     ],
-    "author": "Sunny Parkash <sunny.parkash@email.com> (https://github.com/sunnyparkash)",
+    "author": "Sunny Parkash <sunny.parkash@gmail.com> (https://github.com/sunnyparkash)",
     "license": "MIT",
     "scripts": {
         "start": "node /bin/app.js",

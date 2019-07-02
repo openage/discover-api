@@ -27,100 +27,72 @@ var notify = function (hisProfile, hisConnection, myConnection, myProfile, hasCh
     // }
 }
 
-var getConnections = function (myProfile, hisProfileId, callback) {
-    db.profile.findOne({ _id: hisProfileId })
-        .populate('connections user')
-        .exec(function (err, hisProfile) {
-            if (err) {
-                return callback(err)
-            }
-            var hisConnection = _(hisProfile.connections).find(function (item) {
-                return item.profile.toString() === myProfile.id
-            })
-            var myConnection = _(myProfile.connections).find(function (item) {
-                return item.profile.toString() === hisProfile.id
-            })
+var getConnections = async (hisProfile, context) => {
+    var hisConnection = hisProfile.connections.find(function (item) {
+        return item.profile.toString() === context.profile.id
+    })
+    var myConnection = context.profile.connections.find(function (item) {
+        return item.profile.toString() === hisProfile.id
+    })
 
-            // if (hisConnection) {
-            //     hisConnection.profile = myProfile;
-            // }
-
-            // if (myConnection) {
-            //     myConnection.profile = hisProfile;
-            // }
-            callback(null, hisProfile, hisConnection, myConnection)
-        })
+    return {
+        his: hisConnection,
+        my: myConnection
+    }
 }
 
-var updateStatus = function (myProfile, status, hisProfileId, callback) {
-    var tasks = [
-        function (cb) {
-            getConnections(myProfile, hisProfileId, cb)
-        },
-        function (hisProfile, hisConnection, myConnection, cb) {
-            var hasChanged = false
+var updateStatus = async (status, hisProfile, context) => {
+    let connections = getConnections(hisProfile, context)
 
-            if (!hisConnection || !myConnection) {
-                callback('relationship does not exist')
-            }
+    var hasChanged = false
 
-            switch (status) {
-            case 'blocked':
-                if ('deleted|blocked'.indexOf(myConnection.status) === -1) {
-                    myConnection.status = 'blocked'
-                    hisConnection.status = 'blocked'
-                    hasChanged = true
-                }
-                break
-            case 'active':
-                if (myConnection.status === 'inComming') {
-                    myConnection.status = 'active'
-                    hisConnection.status = 'active'
-                    hasChanged = true
-
-                    // removing notification for active connection
-
-                    var requestNotification = _.find(myProfile.notifications, function (notificationBlock) {
-                        return notificationBlock.data.entity.id === hisProfileId &&
-                                notificationBlock.data.api === 'connections' &&
-                                notificationBlock.data.action === 'inComming'
-                    })
-
-                    myProfile.notifications.splice(myProfile.notifications.indexOf(requestNotification), 1)
-                }
-                break
-            case 'deleted':
-                if (myConnection.status !== 'deleted') {
-                    myConnection.status = 'deleted'
-                    hisConnection.status = 'deleted'
-                    hasChanged = true
-                }
-                break
-            default:
-                break
-            }
-            if (hasChanged) {
-                async.parallel([
-                    function (cb) {
-                        myProfile.save(cb)
-                    },
-                    function (cb) {
-                        hisProfile.save(cb)
-                    }
-                ], function (err) {
-                    cb(err, hisProfile, hisConnection, myConnection, myProfile, hasChanged)
-                })
-            } else {
-                cb(null, hisProfile, hisConnection, myConnection, myProfile, hasChanged)
-            }
-        }
-    ]
-
-    if (status !== 'deleted') { // bypass for delete connection
-        tasks.push(notify)
+    if (!connections.his || !connections.my) {
+        throw Error('relationship does not exist')
     }
 
-    async.waterfall(tasks, callback)
+    switch (status) {
+    case 'blocked':
+        if ('deleted|blocked'.indexOf(connections.my.status) === -1) {
+            connections.my.status = 'blocked'
+            connections.his.status = 'blocked'
+            hasChanged = true
+        }
+        break
+    case 'active':
+        if (connections.my.status === 'inComming') {
+            connections.my.status = 'active'
+            connections.his.status = 'active'
+            hasChanged = true
+
+            // removing notification for active connection
+
+            var requestNotification = context.profile.notifications.find(notificationBlock => {
+                return notificationBlock.data.entity.id === hisProfile.id &&
+                        notificationBlock.data.api === 'connections' &&
+                        notificationBlock.data.action === 'inComming'
+            })
+
+            context.profile.notifications.splice(context.profile.notifications.indexOf(requestNotification), 1)
+        }
+        break
+    case 'deleted':
+        if (connections.my.status !== 'deleted') {
+            connections.my.status = 'deleted'
+            connections.his.status = 'deleted'
+            hasChanged = true
+        }
+        break
+    default:
+        break
+    }
+    if (hasChanged) {
+        await context.profile.save()
+        await hisProfile.save()
+    }
+
+    return connections.my
+
+    // TODO: notify
 }
 
 var api = exports
@@ -129,119 +101,128 @@ var api = exports
 // accepts a inComming connection
 // does nothing in other cases
 // POST connections { profile }
-api.create = function (req, res) {
+api.create = async (req) => {
     // posted a profile
-    var myProfile = req.user.profile
+    var myProfile = req.context.profile
 
-    async.waterfall([
-        function (cb) {
-            getConnections(myProfile, req.body.profile.id, cb)
-        },
-        function (hisProfile, hisConnection, myConnection, cb) {
-            var hasChanged = true
+    let hisProfile = await db.profile.findById(req.body.connection.profile.id)
+        .populate('connections')
 
-            if (hisConnection && myConnection) {
-                res.log.debug('already have the connection. mine', myConnection.status)
-                res.log.debug('already have the connection. his:', hisConnection.status)
+    var connections = await getConnections(hisProfile, req.context)
 
-                if (hisConnection.status === 'outGoing') {
-                    res.log.info('making connection active between profiles')
-                    hisConnection.status = 'active'
-                    myConnection.status = 'active'
-                } else if ('outGoing|active'.indexOf(myConnection.status) === -1) {
-                    res.log.info('resetting connection status to outGoing')
-                    hisConnection.status = 'inComming'
-                    myConnection.status = 'outGoing'
-                } else {
-                    res.log.info('cannot change the state of this connection')
-                    hasChanged = false
-                }
-            } else {
-                res.log.info('creating new connection request')
-
-                hisConnection = {
-                    status: 'inComming',
-                    profile: myProfile,
-                    date: new Date()
-                }
-                hisProfile.connections.push(hisConnection)
-                myConnection = {
-                    status: 'outGoing',
-                    profile: hisProfile,
-                    date: new Date()
-                }
-                myProfile.connections.push(myConnection)
-            }
-            if (hasChanged) {
-                async.parallel([
-                    function (cb) {
-                        myProfile.save(cb)
-                    },
-                    function (cb) {
-                        hisProfile.save(cb)
-                    }
-                ], function (err) {
-                    cb(err, hisProfile, hisConnection, myConnection, myProfile, hasChanged)
-                })
-            } else {
-                cb(null, hisProfile, hisConnection, myConnection, myProfile, hasChanged)
-            }
-        },
-        notify
-    ],
-    function (err, myConnection) {
-        if (err) {
-            res.failure(err)
-        } else {
-            res.data(mapper.toModel(myConnection))
+    var hasChanged = true
+    if (req.body.connection.status === 'ignored') {
+        connections.my = {
+            status: 'ignored',
+            profile: hisProfile,
+            date: new Date()
         }
-    })
+        myProfile.connections.push(connections.my)
+        await myProfile.save()
+        hasChanged = false
+    }
+
+    if (req.body.connection.status === 'bookmarked') {
+        connections.my = {
+            status: 'bookmarked',
+            profile: hisProfile,
+            date: new Date()
+        }
+        myProfile.connections.push(connections.my)
+        await myProfile.save()
+        hasChanged = false
+    }
+
+    if (req.body.connection.status === 'blocked') {
+        connections.my = {
+            status: 'blocked',
+            profile: hisProfile,
+            date: new Date()
+        }
+        myProfile.connections.push(connections.my)
+        await myProfile.save()
+        hasChanged = false
+    }
+
+    if (connections.his && connections.my) {
+        req.context.logger.debug('already have the connection. mine', connections.my.status)
+        req.context.logger.debug('already have the connection. his:', connections.his.status)
+
+        if (connections.his.status === 'outGoing') {
+            req.context.logger.info('making connection active between profiles')
+            connections.his.status = 'active'
+            connections.my.status = 'active'
+        } else if ('outGoing|active'.indexOf(connections.my.status) === -1) {
+            req.context.logger.info('resetting connection status to outGoing')
+            connections.his.status = 'inComming'
+            connections.my.status = 'outGoing'
+        } else {
+            req.context.logger.info('cannot change the state of this connection')
+            hasChanged = false
+        }
+    } else if (req.body.connection.status !== 'ignored' && req.body.connection.status !== 'blocked' && req.body.connection.status !== 'bookmarked') {
+        req.context.logger.info('creating new connection request')
+
+        connections.his = {
+            status: 'inComming',
+            like: req.body.connection.like,
+            profile: myProfile,
+            date: new Date()
+        }
+        hisProfile.connections.push(connections.his)
+
+        connections.my = {
+            status: 'outGoing',
+            like: req.body.connection.like,
+            profile: hisProfile,
+            date: new Date()
+        }
+        myProfile.connections.push(connections.my)
+    }
+
+    if (hasChanged) {
+        await myProfile.save()
+        await hisProfile.save()
+        // todo: send message via sendit
+    }
+
+    return mapper.toModel(connections.my)
 }
 
 // status = active, deleted
-api.update = function (req, res) {
-    var myProfile = req.user.profile
-    updateStatus(myProfile, req.body.status, req.params.id, function (err, connection) {
-        if (err) {
-            return res.failure(err)
-        }
-        if (connection.status !== req.body.status) {
-            return res.failure('cannot change the status from: ' + connection.status + ' to: ' + req.body.status)
-        }
-        res.data(mapper.toModel(connection))
-    })
+// PUT connections/{profileId}
+api.update = async (req) => {
+    var myProfile = req.context.profile
+
+    let hisProfile = await db.profile.findById(req.params.id || req.body.connection.profile.id)
+        .populate('connections')
+
+    let connection = await updateStatus(req.body.connection.status, hisProfile, req.context)
+    if (connection.status !== req.body.connection.status) {
+        throw new Error('cannot change the status from: ' + connection.status + ' to: ' + req.body.connection.status)
+    }
+    return mapper.toModel(connection)
 }
 
 // to Unfriend
 // DELETE connections/{profileId}
-api.delete = function (req, res) {
-    var myProfile = req.user.profile
-    updateStatus(myProfile, 'deleted', req.params.id, function (err, item) {
-        if (err) {
-            return res.failure(err)
-        }
-        res.success()
-    })
+api.delete = async (req) => {
+    var myProfile = req.context.profile
+    await updateStatus('deleted', req.params.id, req.context)
 }
 
-api.search = function (req, res) {
-    db.profile.findById(req.user.profile.id)
+api.search = async (req) => {
+    let profile = await db.profile.findById(req.context.profile.id)
         .populate('connections.profile')
-        .exec(function (err, profile) {
-            res.log.silly(profile.connections)
-            if (err) {
-                return res.failure(err)
-            }
 
-            var connections = _(profile.connections).filter(function (item) {
-                return item.status === 'active'
-            })
-            res.page(mapper.toSearchModel(connections))
-        })
+    var connections = profile.connections.filter(function (item) {
+        return item.status === 'active'
+    })
+    return connections.map(mapper.toModel)
 }
 
 api.cancelRequest = function (req, res) {
-    var myProfile = req.user.profile
+    var myProfile = req.context.profile
     var removeNotificationFrom
     var requestBy
 
@@ -253,12 +234,12 @@ api.cancelRequest = function (req, res) {
         function (cb) {
             getConnections(myProfile, req.params.id, cb)
         },
-        function (hisProfile, hisConnection, myConnection, cb) {
-            if (hisConnection.status === 'outGoing' || myConnection.status === 'inComming' &&
-                hisConnection.status === 'inComming' || myConnection.status === 'outGoing') {
-                // removeNotificationFrom = hisConnection.status === "inComming" ? hisProfile : myProfile;
+        function (hisProfile, connections, cb) {
+            if (connections.his.status === 'outGoing' || connections.my.status === 'inComming' &&
+                connections.his.status === 'inComming' || connections.my.status === 'outGoing') {
+                // removeNotificationFrom = connections.his.status === "inComming" ? hisProfile : myProfile;
 
-                if (hisConnection.status === 'inComming') {
+                if (connections.his.status === 'inComming') {
                     removeNotificationFrom = hisProfile
                     requestBy = myProfile
                 } else {
@@ -266,8 +247,8 @@ api.cancelRequest = function (req, res) {
                     requestBy = hisProfile
                 }
 
-                hisProfile.connections.splice(hisProfile.connections.indexOf(hisConnection), 1)
-                myProfile.connections.splice(myProfile.connections.indexOf(myConnection), 1)
+                hisProfile.connections.splice(hisProfile.connections.indexOf(connections.his), 1)
+                myProfile.connections.splice(myProfile.connections.indexOf(connections.my), 1)
 
                 async.parallel([
                     function (callback) {

@@ -1,6 +1,6 @@
 'use strict'
 
-exports.extract = req => {
+exports.extract = (req) => {
     let serverPaging = req.query.serverPaging
 
     if (serverPaging === undefined) {

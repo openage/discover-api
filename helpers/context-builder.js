@@ -8,7 +8,7 @@ const create = async (claims, logger) => {
         config: {
             timeZone: 'IST'
         },
-        permissions: []
+        permissions: []   
     }
 
     let log = context.logger.start('context-builder:create')
@@ -37,10 +37,29 @@ const create = async (claims, logger) => {
         }
 
         context.permissions.push(profile.userType)
+
+        const preferences = profile.preferences || {}
+        preferences.timeZone = preferences.timeZone || context.config.timeZone
+        context.config = preferences
+    }
+
+    context.setOrganization = async(organization) => {
+        if (!organization) {
+            return
+        }
+
+        if (organization._doc) {
+            context.organization = organization
+        } else if (organization.id) {
+            context.organization = await db.organization.findOne({ _id: organization.id })
+        } else if (organization.code) {
+            context.organization = await db.organization.findOne({ code: organization.code })
+        }
     }
 
     await context.setProfile(claims.profile)
     await context.setTenant(claims.tenant)
+    await context.setOrganization(claims.organization)
 
     context.getConfig = (identifier, defaultValue) => {
         var keys = identifier.split('.')

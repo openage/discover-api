@@ -5,6 +5,7 @@ exports.toModel = (entity) => {
         return {
             id: entity.profile.toString(),
             status: entity.status,
+            like: entity.like,
             profile: {
                 id: entity.profile.toString()
             },
@@ -15,6 +16,7 @@ exports.toModel = (entity) => {
     return {
         id: entity.profile.id,
         status: entity.status,
+        like: entity.like,
         profile: {
             id: entity.profile.id,
             name: entity.profile.name,

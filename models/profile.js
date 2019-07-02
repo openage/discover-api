@@ -4,20 +4,21 @@ var mongoose = require('mongoose')
 module.exports = {
     pic: {
         url: String,
-        thumbnail: String
+        thumbnail: String,
+        status: {
+            type: String,
+            default: 'active'
+        }
     },
     name: String,
-    age: Number,
-    gender: String,
-    about: String,
+    description: String,
+
+    entity: {
+        id: String,
+        type: { type: String }
+    }, // person, hosptial, shop, doctor
+
     status: String,
-
-    role: {
-        id: { type: String },
-        key: { type: String },
-        permissions: [{ type: String }]
-    },
-
     location: {
         coordinates: {
             type: [Number], // [<longitude>, <latitude>]
@@ -26,34 +27,38 @@ module.exports = {
         name: String,
         description: String
     },
-    images: [{
-        order: Number,
-        url: String,
-        thumbnail: String,
-        status: String
-    }],
-    interests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'interest' }],
 
+    city: String,
+    state: String,
+    country: String,
+
+    startTime: Date, // profile display startTime
+    endTime: Date,   // profile expiry time
+
+    meta: Object,
+
+    interests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'interest' }],
     categories: [{ type: mongoose.Schema.Types.ObjectId, ref: 'category' }],
 
-    connections: [{
-        profile: { type: mongoose.Schema.Types.ObjectId, ref: 'profile' },
-        status: String, // active, blocked, inComming, outGoing, ignored
+    // superlike = like = true, status = outGoing
+    // like = like = undefined/false, status = outGoing
+    // bookmark = status = bookmarked
+    // dislike = status = ignored
+    users: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'user' },
+        // mutual: active-active, blocked-outGoing, inComming-outGoing, outGoing-inComming
+        // individual: ignored-*, bookmarked-*
+        status: String,
+        like: Boolean,
         date: Date
     }],
 
-    requests: [{
-        status: String,
-        role: String,
-        recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'profile' }
+    userAttributes: [{
+        field: String,
+        op: String,
+        value: Object
     }],
 
-    // spread the word
-    facebookFriends: [String],
-    contactFriends: [String],
-    invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'profile' },
-
-    lastSeen: { type: Date, default: Date.now },
-
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'organization' },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'tenant' }
 }

@@ -1,39 +1,41 @@
+/* eslint-disable indent */
 'use strict'
-var _ = require('underscore')
 
-var mapper = exports
-var profileId
+// var fetchConnectionStatus = function (hisProfile, myProfileId, cb) {
+//     _.find(hisProfile.connections, function (item) {
+//         if (item.profile.toString() === myProfileId) {
+//             if (item.status === 'inComming') {
+//                 return cb(null, 'outGoing')
+//             }
+//             if (item.status === 'outGoing') {
+//                 return cb(null, 'inComming')
+//             }
+//             return cb(null, item.status)
+//         }
+//     })
+// }
 
-var fetchConnectionStatus = function (hisProfile, myProfileId, cb) {
-    _.find(hisProfile.connections, function (item) {
-        if (item.profile.toString() === myProfileId) {
-            if (item.status === 'inComming') {
-                return cb(null, 'outGoing')
-            }
-            if (item.status === 'outGoing') {
-                return cb(null, 'inComming')
-            }
-            return cb(null, item.status)
-        }
-    })
-}
-
-mapper.toModel = (entity) => {
+exports.toModel = (entity) => {
     var model = {
-        id: entity.id,
+        id: entity.id || entity._id.toString(),
         name: entity.name,
-        age: entity.age,
-        gender: entity.gender,
+        description: entity.description,
+        status: entity.status,
         about: entity.about,
-        connnectionStatus: entity.connnectionStatus,
-        lastSeen: entity.lastSeen,
+        city: entity.city,
+        state: entity.state,
+        country: entity.country,
+        startTime: entity.startTime,
+        endTime: entity.endTime,
+        meta: entity.meta,
         timeStamp: entity.timeStamp
     }
 
     if (entity.pic) {
         model.pic = {
             url: entity.pic.url,
-            thumbnail: entity.pic.thumbnail
+            thumbnail: entity.pic.thumbnail,
+            status: entity.pic.status || 'active'
         }
     }
 
@@ -61,24 +63,11 @@ mapper.toModel = (entity) => {
             }
         })
     }
-    model.images = []
-
-    if (entity.images && entity.images.length) {
-        entity.images.forEach(image => {
-            if (!image.status || image.status !== 'deleted') {
-                model.images.push({
-                    order: image.order,
-                    url: image.url,
-                    thumbnail: image.thumbnail
-                })
-            }
-        })
-    }
 
     return model
 }
 
-mapper.toMyProfileModel = function (entity) {
+exports.toMyProfileModel = function (entity) {
     var model = mapper.toModel(entity)
     model.status = entity.status
     model.connections = []
@@ -110,33 +99,52 @@ mapper.toMyProfileModel = function (entity) {
         }
     }
 
+    if (entity.preferences) {
+        model.preferences = {
+            id: entity.preferences.id.toString(),
+            seenBy: entity.preferences.seenBy,
+            showAge: entity.preferences.showAge
+        }
+        if (entity.preferences.lookingFor) {
+            model.preferences.lookingFor = {}
+
+            if (entity.preferences.lookingFor.age) {
+                model.preferences.lookingFor.age = {
+                    start: entity.preferences.lookingFor.age.start ? entity.preferences.lookingFor.age.start : 0,
+                    end: entity.preferences.lookingFor.age.end ? entity.preferences.lookingFor.age.end : 0
+                }
+            }
+            if (entity.preferences.lookingFor.gender) {
+                model.preferences.lookingFor.gender = entity.preferences.lookingFor.gender
+            }
+        }
+    }
     return model
 }
 
-mapper.toSearchModel = function (entities, id) {
-    if (id) {
-        profileId = id
-    }
-    return _(entities).map(mapper.toModel)
+exports.toSearchModel = function (entities) {
+    return entities.map((entity) => {
+        return exports.toModel(entity)
+    })
 }
 
-mapper.discoverProfiles = function (entities, myProfileId) {
-    var profiles = []
-    _.each(entities, function (item) {
-        var profileModel = {
-            id: item.id,
-            picUrl: item.picUrl,
-            picData: item.picData,
-            name: item.name
-        }
-        fetchConnectionStatus(item, myProfileId, function (err, data) {
-            if (err) {
-                return null
-            }
-            profileModel.myConnectionStatus = data || null
-        })
-        profileModel.myConnectionStatus = profileModel.myConnectionStatus ? profileModel.myConnectionStatus : null
-        profiles.push(profileModel)
-    })
-    return profiles
-}
+// mapper.discoverProfiles = function (entities, myProfileId) {
+//     var profiles = []
+//     _.each(entities, function (item) {
+//         var profileModel = {
+//             id: item.id,
+//             picUrl: item.picUrl,
+//             picData: item.picData,
+//             name: item.name
+//         }
+//         fetchConnectionStatus(item, myProfileId, function (err, data) {
+//             if (err) {
+//                 return null
+//             }
+//             profileModel.myConnectionStatus = data || null
+//         })
+//         profileModel.myConnectionStatus = profileModel.myConnectionStatus ? profileModel.myConnectionStatus : null
+//         profiles.push(profileModel)
+//     })
+//     return profiles
+// }

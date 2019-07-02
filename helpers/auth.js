@@ -1,8 +1,8 @@
 'use strict'
 
 const contextBuilder = require('../helpers/context-builder')
-const profileService = require('../services/profiles')
 const tenantService = require('../services/tenants')
+const userService = require('../services/users')
 
 const directory = require('@open-age/directory-client')
 const db = require('../models')
@@ -37,7 +37,7 @@ const populateFromRole = (role, context) => {
 
 const getFromDirectory = async (roleKey, logger) => {
     const log = logger.start('services/users:getFromDirectory')
-    let profile = await db.profile.findOne({ 'role.key': roleKey }).populate('tenant')
+    let profile = await db.profile.findOne({ 'role.key': roleKey }).populate('tenant preferences')
     if (profile) {
         return profile
     }
@@ -77,16 +77,18 @@ const getFromDirectory = async (roleKey, logger) => {
 
 const extractFromRoleKey = async (roleKey, logger) => {
     let log = logger.start('extractRoleKey')
-    let profile = await getFromDirectory(roleKey, log)
-    if (!profile) {
+    let user = await userService.getFromDirectory(roleKey, logger)
+    if (!user) {
         throw new Error('invalid role key')
     }
 
-    profile.lastSeen = Date.now()
-    await profile.save()
+    user.lastSeen = Date.now()
+    await user.save().catch(error => {
+        console.log(error)
+    })
     log.end()
 
-    return profile
+    return user
 }
 
 exports.requiresRoleKey = (req, res, next) => {
@@ -100,10 +102,11 @@ exports.requiresRoleKey = (req, res, next) => {
         })
     }
 
-    extractFromRoleKey(role.key, log).then(profile => {
+    extractFromRoleKey(role.key, log).then(user => {
         contextBuilder.create({
-            profile: profile,
-            tenant: profile.tenant
+            user: user,
+            tenant: user.tenant,
+            organization: user.organization
         }, res.logger).then(context => {
             req.context = context
             next()
