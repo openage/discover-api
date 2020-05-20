@@ -1,9 +1,35 @@
-'use strict'
+const mongoose = require('mongoose')
+
 module.exports = {
-    code: { type: String, required: true },
+    code: { type: String, lowercase: true },
     name: String,
-    key: String,
+    logo: {
+        url: String,
+        thumbnail: String
+    },
     config: Object,
+    owner: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'user'
+    },
+    services: [{
+        logo: String,
+        code: String,
+        name: String,
+        url: String, // api root url
+        hooks: {
+            project: {
+                onCreate: String,
+                onUpdate: String,
+                onDelete: String
+            },
+            task: {
+                onCreate: String,
+                onUpdate: String,
+                onDelete: String
+            }
+        }
+    }],
     status: {
         type: String,
         default: 'active',

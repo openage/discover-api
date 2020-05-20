@@ -1,26 +1,38 @@
-var mongoose = require('mongoose')
+const mongoose = require('mongoose')
 
 module.exports = {
-    code: { type: String },
-
-    profile: {
-        age: Number,
-        gender: String
-    },
-
     role: {
-        id: { type: String },
-        code: { type: String },
-        key: { type: String },
-        permissions: [{ type: String }]
+        id: String,
+        key: String,
+        code: String,
+        permissions: [{
+            type: String
+        }]
     },
-
-    prefrences: {
+    email: String,
+    phone: String,
+    code: String,
+    profile: {
+        firstName: String,
+        lastName: String,
+        gender: String,
+        dob: Date,
+        pic: {
+            url: String,
+            thumbnail: String
+        }
+    },
+    config: Object,
+    preferences: {
         age: {
             start: Number,
             end: Number
         },
-        gender: String
+        gender: String,
+        coordinates: {
+            type: [Number]
+        },
+        interests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'interest' }]
     },
 
     // TODO: part of social
@@ -35,7 +47,9 @@ module.exports = {
     //     recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'user' }
     // }],
 
-    lastSeen: { type: Date, default: Date.now },
+    status: String,
+    lastSeen: Date,
+
     organization: { type: mongoose.Schema.Types.ObjectId, ref: 'organization' },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'tenant' }
 }

@@ -1,5 +1,5 @@
 'use strict'
-var mongoose = require('mongoose')
+const mongoose = require('mongoose')
 
 module.exports = {
     profile: { type: mongoose.Schema.Types.ObjectId, ref: 'profile' },

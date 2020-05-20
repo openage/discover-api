@@ -1,64 +1,58 @@
-'use strict';
-var _ = require('underscore');
+'use strict'
 
-var getInterests = function(category) {
-    var interests = [];
-
-    if (!category.interests) {
-        return interests;
+exports.toModel = function (entity, context) {
+    if (!entity) {
+        return
     }
 
-    _.each(category.interests, function(interest) {
-        interests.push({
-            id: interest.id,
-            name: interest.name
-        });
-    });
-
-    return interests;
-};
-
-
-exports.toModel = function(entity) {
-    return {
-        id: entity.id,
-        name: entity.name,
-        category: {
-            id: entity.category
+    if (entity._bsontype === 'ObjectID') {
+        return {
+            id: entity.toString()
         }
-    };
-};
+    }
 
+    let model = {
+        id: entity.id,
+        name: entity.name
+    }
 
-exports.toMixModel = function(entities) {
-    var mixModels = [];
-    _.each(entities, function(entity) {
-        mixModels.push({
-            id: entity.id,
-            name: entity.name,
-            interests: getInterests(entity)
-        });
-    });
-    return mixModels;
-};
+    if (entity.category) {
+        if (entity.category._bsontype === 'ObjectID') {
+            model.category = {
+                id: entity.category.toString()
+            }
+        } else {
+            model.category = {
+                id: entity.category.id,
+                name: entity.category.name
+            }
+        }
+    }
 
-exports.groupBy = function(entities) {
+    return model
+}
 
-    var categories = [];
+exports.groupBy = function (entities) {
+    return entities.reduce((result, currentValue) => {
+        let category = currentValue.category
 
-    var groups =
-        _.groupBy(entities, function(interest) {
-            return interest.category.id;
-        });
+        let group = result.find(c => c.id === category.id)
 
-    groups = _.toArray(groups);
+        if (!group) {
+            group = {
+                id: category.id,
+                name: category.name,
+                interests: []
+            }
 
-    _.each(groups, function(category) {
-        var obj = category[0].category;
-        obj.interests = category;
+            result.push(group)
+        }
 
-        categories.push(obj);
-    });
-    return exports.toMixModel(categories);
+        group.interests.push({
+            id: currentValue.id,
+            name: currentValue.name
+        })
 
-};
+        return result
+    }, [])
+}

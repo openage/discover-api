@@ -10,9 +10,9 @@
     "queueServer": {
         "disabled": true
     },
-    "system": {
+    "support": {
         "name": "Open Age",
-        "emailId": "no_reply@openage.in"
+        "email": "support@openage.in"
     },
     "auth": {
         "provider": "directory"
@@ -31,10 +31,16 @@
             "api_Key": "placeholder"
         },
         "directory": {
-            "url": "http://localhost:3001/api"
+            "url": "https://dev.openage.in/directory/api"
         },
         "send-it": {
-            "url": "http://localhost:3002/api"
+            "url": "https://dev.openage.in/sendIt/api"
         }
+    },
+    "formats": {
+        "date": "DD-MM-YYYY"
+    },
+    "organization": {
+        "timeZone": "IST"
     }
 }

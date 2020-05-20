@@ -1,36 +1,118 @@
 'use strict'
-const db = require('../models')
+var db = require('../models')
 
-const create = async (model, context) => {
-    let log = context.logger.start('create')
-    try {
-        let tenant = await db.tenant.findOrCreate({ code: model.code, name: model.name }, model)
+const set = async (model, entity, context) => {
+    if (model.name) {
+        entity.name = model.name
+    }
 
-        if (tenant.created) {
-            log.info('new tenant created')
-        } else {
-            log.info('tenant already exist')
+    if (model.logo) {
+        entity.logo = {
+            url: model.logo.url,
+            thumbnail: model.thumbnail.url
         }
+    }
 
-        return tenant.result
-    } catch (error) {
-        log.error(error)
-        return error
+    if (model.status) {
+        entity.status = model.status
+    }
+
+    if (model.config) {
+        entity.config = model.config
+    }
+
+    if (model.owner) {
+        let user = await db.user.findOrCreate({
+            email: model.owner.email
+        }, {
+            email: model.owner.email,
+            name: model.owner.name,
+            tenant: entity
+        })
+
+        entity.owner = user.result
     }
 }
 
-const getById = async (id, context) => {
-    context.logger.start('services/tenants:getById')
-
-    return db.tenant.findById(id)
+exports.update = async (id, model, context) => {
+    if (id === 'me' || id === 'my') {
+        id = context.tenant.id
+    }
+    let tenant = await db.tenant.findById(id).populate('owner')
+    await set(model, tenant, context)
+    return tenant.save()
 }
 
-const getByCode = async (code, context) => {
-    context.logger.start('services/tenants:getByCode')
+exports.create = async (model, context) => {
+    let log = context.logger.start('services/tenants:create')
 
-    return db.tenant.findOne({ code: code })
+    let tenant = await exports.get(model, context)
+
+    if (!tenant) {
+        tenant = new db.tenant({
+            code: model.code.toLowerCase(),
+            status: 'active'
+        }).save()
+    }
+
+    await set(model, tenant, context)
+    log.end()
+    return tenant
 }
 
-exports.create = create
-exports.getById = getById
-exports.getByCode = getByCode
+exports.get = async (query, context) => {
+    if (typeof query === 'string') {
+        if (query.isObjectId()) {
+            return db.tenant.findById(query).populate('owner')
+        } else {
+            if (query === 'me' || query === 'my') {
+                return db.tenant.findById(context.tenant.id).populate('owner')
+            }
+            return db.tenant.findOne({ code: query.toLowerCase() }).populate('owner')
+        }
+    }
+
+    if (query.id) {
+        if (query.id === 'me' || query.id === 'my') {
+            return db.tenant.findById(context.tenant.id).populate('owner')
+        }
+        return db.tenant.findById(query.id).populate('owner')
+    }
+
+    if (query.code) {
+        return db.tenant.findOne({ code: query.code.toLowerCase() }).populate('owner')
+    }
+
+    return null
+}
+
+exports.getOrCreate = async (model, context) => {
+    let log = context.logger.start('services/tenants:clone')
+
+    let tenant = await exports.get(model, context)
+
+    if (!tenant) {
+        tenant = new db.tenant({
+            name: model.name,
+            code: model.code.toLowerCase(),
+            status: 'active'
+        }).save()
+    }
+
+    log.end()
+    return tenant
+}
+
+exports.search = async (query, page, context) => {
+    let where = {
+    }
+    if (!page || !page.limit) {
+        return {
+            items: await db.tenant.find(where)
+        }
+    }
+    return {
+        items: await db.tenant.find(where).limit(page.limit).skip(page.skip),
+        count: await db.tenant.count(where)
+    }
+}

@@ -2,35 +2,82 @@
 
 const db = require('../models')
 
-const interestService = require('./interests')
-const preferenceService = require('./preferences')
-exports.create = async (model, context) => {
-    model.tenant = context.tenant
-    let profile = new db.profile(model)
+const interests = require('./interests')
+const categories = require('./categories')
+// const preferenceService = require('./preferences')
 
-    return profile.save()
-}
+const populate = 'interests categories'
 
-exports.update = async (id, model, context) => {
-    const entity = await db.profile.findById(id).populate('interests preferences')
+const set = async (model, entity, context) => {
+    if (model.code && model.code !== entity.code) {
+        if (await this.get(model.code, context)) {
+            throw new Error(`${model.code} already exists`)
+        }
+        entity.code = model.code.toLowerCase()
+    }
+
+    if (model.name && model.name !== entity.name) {
+        entity.name = model.name
+    }
+
+    if (model.description) {
+        entity.description = model.description
+    }
+
+    if (model.price) {
+        entity.price = model.price
+    }
+
+    if (model.meta && model.meta !== entity.meta) {
+        entity.meta = model.meta
+    }
+
+    if (model.pic) {
+        entity.pic = model.pic
+    }
+
+    if (model.status && model.status !== entity.status) {
+        entity.status = model.status
+    }
+
+    if (model.tags && model.tags[0]) {
+        entity.tags = []
+        model.tags.forEach(tag => {
+            entity.tags.push(tag.toString())
+        })
+    }
+
     if (model.interests && model.interests.length) {
         entity.interests = []
 
         for (const interest of model.interests) {
-            entity.interests.push(await interestService.get(interest))
+            entity.interests.push(await interests.get(interest, context))
         }
     }
-    if (model.preferences) {
-        let preferences = await preferenceService.get({
-            profile: {
-                id: context.profile.id
-            },
-            preferences: model.preferences
-        }, context)
-        if (preferences) {
-            entity.preferences = await preferenceService.update(model.preferences, preferences, context)
+
+    if (model.categories && model.categories.length) {
+        entity.categories = []
+        for (const category of model.categories) {
+            let item = await categories.get(category, context)
+            if (!item) {
+                item = await categories.create(category, context)
+            }
+            entity.categories.push(item)
         }
     }
+
+    // if (model.preferences) {
+    //     let preferences = await preferenceService.get({
+    //         profile: {
+    //             id: context.profile.id
+    //         },
+    //         preferences: model.preferences
+    //     }, context)
+    //     if (preferences) {
+    //         entity.preferences = await preferenceService.update(model.preferences, preferences, context)
+    //     }
+    // }
+
     if (model.images && model.images.length) {
         for (const image of model.images) {
             let existing = entity.images.find(item => item.url.toLowerCase() === image.url.toLowerCase())
@@ -42,79 +89,154 @@ exports.update = async (id, model, context) => {
         }
     }
 
-    // if ( model.categories ) {
-    //     if ( typeof ( model.categories[0] ) === 'object' ) {
-    //         model.categories = _.pluck( model.categories, 'id' )
-    //     }
-    // }
-
-    if (model.name && model.name !== entity.name) {
-        entity.name = model.name
+    if (model.targets && model.targets.length) {
+        entity.targets = model.targets.map(i => {
+            return {
+                field: i.field,
+                op: i.op || 'eq',
+                value: i.value
+            }
+        })
     }
 
-    if (model.pic) {
-        entity.pic = model.pic
+    if (model.rating) {
+        entity.rating = {
+            value: model.rating.value,
+            count: model.rating.count,
+            reviewCount: model.rating.reviewCount,
+            oneStar: model.rating.oneStar,
+            twoStar: model.rating.twoStar,
+            threeStar: model.rating.threeStar,
+            fourStar: model.rating.fourStar,
+            fiveStar: model.rating.fiveStar
+        }
     }
 
-    if (model.status && model.status !== entity.status) {
-        entity.status = model.status
+    if (model.location) {
+        entity.location = {
+            name: model.location.name,
+            description: model.location.description,
+            line1: model.location.line1,
+            line2: model.location.line2,
+            district: model.location.district,
+            city: model.location.city,
+            state: model.location.state,
+            pinCode: model.location.pinCode,
+            country: model.location.country
+        }
+        if (model.location.lat && model.location.long) {
+            let coordinates = {
+                coordinates: [Number(model.location.lat), Number(model.location.long)],
+                type: 'Point'
+            }
+            entity.location.coordinates = coordinates
+        }
+    }
+}
+
+exports.create = async (model, context) => {
+    if (!model.entity || !model.entity.id || !model.entity.type) {
+        throw new Error('entity is required')
     }
 
-    if (model.age && model.age !== entity.age) {
-        entity.age = model.age
+    let entity = await this.get(model, context)
+
+    if (!entity) {
+        if (!model.code) {
+            model.code = `${model.entity.type}-${model.entity.id}`
+        }
+
+        entity = new db.profile({
+            entity: model.entity,
+            status: 'active',
+            owner: context.user,
+            tenant: context.tenant
+        })
     }
 
-    if (model.gender && model.gender !== entity.gender) {
-        entity.gender = model.gender
+    await set(model, entity, context)
+    return entity.save()
+}
+
+exports.react = async (model, context) => {
+
+    if (!model.profile) {
+        throw new Error('profile is required')
     }
 
-    if (model.about && model.about !== entity.about) {
-        entity.about = model.about
+    const entity = await this.get(model.profile, context)
+
+    entity.reactions = entity.reactions || {}
+
+    let reaction = await db.reaction.findOne({
+        profile: entity,
+        user: context.user,
+        tenant: context.tenant
+    })
+
+    if (reaction) {
+        if (entity.reactions[reaction.type]) {
+            entity.reactions[reaction.type]--
+        } else {
+            entity.reactions[reaction.type] = 0
+        }
+        reaction.type = model.type || 'like'
+    } else {
+        reaction = new db.reaction({
+            type: model.type || 'like',
+            profile: entity,
+            user: context.user,
+            tenant: context.tenant
+        })
     }
 
-    if (model.location && model.location !== entity.location) {
-        entity.location = model.location
+    await reaction.save()
+
+    if (entity.reactions[reaction.type]) {
+        entity.reactions[reaction.type]++
+    } else {
+        entity.reactions[reaction.type] = 1
     }
 
     return entity.save()
 }
 
-const extractQuery = (params, context) => {
+exports.update = async (id, model, context) => {
+    const entity = await this.get(id, context)
+
+    await set(model, entity, context)
+    return entity.save()
+}
+
+exports.search = async (query, paging, context) => {
+    let log = context.logger.start('services/profile:search')
+
     let where = {
-        tenant: toObjectId(context.tenant.id)
+        tenant: context.tenant
     }
 
     where.status = { $eq: 'active' }
 
-    if (!params) { return where }
-
-    for (let key in params) {
-        if (key.toLowerCase().startsWith('sort') || key == 'limit' || key == 'skip') {
-            continue
-        }
-
-        let value = params[key]
-
-        if (!value) { continue }
-
-        let operator = value.includes(':') ? ('$' + value.split(':')[0]) : '$eq'
-
-        key = key.replace('/_/gi', '.')
-
-        if (where.hasOwnProperty(key)) {
-            where[key][operator] = value
-        } else {
-            where[key] = new Object()
-            where[key][operator] = value
-        }
-
-    }
-
-    // let interests = params.interests || context.getConfig('interests')
-    // if (interests) {
-    //     where.interests = {
-    //         $all: interests
+    // for (let key in params) {
+    //     if (key.toLowerCase().startsWith('sort') || key == 'limit' || key == 'skip') {
+    //         continue
     //     }
+
+    //     let value = params[key]
+
+    //     if (!value) { continue }
+
+    //     let operator = value.includes(':') ? ('$' + value.split(':')[0]) : '$eq'
+
+    //     key = key.replace('/_/gi', '.')
+
+    //     if (where.hasOwnProperty(key)) {
+    //         where[key][operator] = value
+    //     } else {
+    //         where[key] = new Object()
+    //         where[key][operator] = value
+    //     }
+
     // }
 
     // if (context.config) {
@@ -137,66 +259,165 @@ const extractQuery = (params, context) => {
     //     }
     // }
 
-    // if (params.around && context.profile.location && context.profile.location.coordinates) {
-    //     where['location.coordinates'] = {
-    //         $geoWithin: {
-    //             $centerSphere: [context.profile.location.coordinates, Number(params.around) / 3963.2]
-    //         }
+    if (query.around) {
+        let coordinates
+        if (query.lat && query.long) {
+            coordinates = [query.lat, query.long]
+        } else if (context.user && context.user.preferences && context.user.preferences.coordinates && context.user.preferences.coordinates.length) {
+            coordinates = context.user.preferences.coordinates
+        }
+        if (coordinates) {
+            where['location.coordinates'] = {
+                $near:
+                {
+                    $geometry: {
+                        type: 'Point',
+                        coordinates: coordinates
+                    },
+                    $maxDistance: query.around
+                }
+            }
+        }
+    }
+
+    if (query.entity) {
+        if (query.entity.id) {
+            where['entity.id'] = query.entity.id
+        }
+
+        if (query.entity.type) {
+            where['entity.type'] = query.entity.type
+        }
+    }
+
+    if (query.tag) {
+        where.tags = {
+            $regex: '^' + query.tag,
+            $options: 'i'
+        }
+    }
+
+    if (query.category) {
+        where.categories = { $in: await (await categories.search(query.category, null, context)).items }
+    }
+
+    if (query.name) {
+        where.name = {
+            $regex: '^' + query.name,
+            $options: 'i'
+        }
+    }
+
+    if (query.address) {
+        where['$or'] = [
+            {
+                line1: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                line2: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                district: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                city: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                state: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                country: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }, {
+                pinCode: {
+                    $regex: query.address,
+                    $options: 'i'
+                }
+            }
+        ]
+    }
+
+    // let interests = query.interests
+    // if (!interests && context.user.preferences.interests && context.user.preferences.interests.length) {
+    //     interests = context.user.preferences.interests
+    // }
+    // if (interests) {
+    //     where.interests = {
+    //         $all: interests
     //     }
     // }
-    return where
-}
 
-exports.discover = async (query, page, context) => {
-    let where = extractQuery(query, context)
-    let finder = [{
-        $match: where
-    }]
-    context.logger.debug('query', where)
-
-    let profiles = await db.profile.aggregate(finder)
+    let items = await db.profile.find(where).populate(populate)
 
     let count = await db.profile.find(where).count()
 
+    log.end()
     return {
-        items: profiles,
+        items: items,
         count: count
     }
 }
 
-exports.get = async (id, context) => {
-    let entity = await db.profile.findById(id).populate('interests preferences')
-
-    if (context.profile.id !== id) {
-        entity.connnectionStatus = getConnectionStatus(entity, context)
+exports.get = async (query, context) => {
+    context.logger.start('services/profiles:get')
+    let where = {
+        tenant: context.tenant
+    }
+    if (typeof query === 'string') {
+        if (query.isObjectId()) {
+            return db.profile.findById(query).populate(populate)
+        } else {
+            where.code = query.toLowerCase()
+            return db.profile.findOne(where).populate(populate)
+        }
     }
 
-    return entity
+    if (query.id) {
+        return db.profile.findById(query.id).populate(populate)
+    }
+
+    if (query.code) {
+        where.code = query.code.toLowerCase()
+        return db.profile.findOne(where).populate(populate)
+    }
+
+    if (query.entity && query.entity.id && query.entity.type) {
+        where['entity.id'] = query.entity.id.toString().toLowerCase()
+        where['entity.type'] = query.entity.type.toString().toLowerCase()
+        return db.profile.findOne(where).populate(populate)
+    }
 }
 
-var getConnectionStatus = (profile, context) => {
-    let connnection = profile.connections.find(item => item.profile.toString() === context.profile.id)
+exports.my = async (id, model, context) => {
+    let entity = await this.get(id, context)
 
-    if (!connnection) {
-        return ''
-    }
-    if (connnection.status === 'inComming') {
-        return 'outGoing'
-    }
-    if (connnection.status === 'outGoing') {
-        return 'inComming'
+    let my = entity.users.find(i => i.user.toString() === context.user.id)
+
+    if (!my) {
+        my = {
+            user: context.user
+        }
+
+        entity.users.push(my)
     }
 
-    return connnection.status
+    my.status = model.status
+    my.rating = model.rating
+    my.date = new Date()
+
+    await entity.save()
+
+    return my
 }
-
-const getByEntity = async (entity, context) => {
-    if (!entity || !entity.id) { return }
-
-    return db.profile.findOne({
-        'entity.id': entity.id,
-        'entity.type': entity.type
-    })
-}
-
-exports.getByEntity = getByEntity

@@ -1,7 +1,7 @@
 'use strict'
 var async = require('async')
 var _ = require('underscore')
-var mapper = require('../mappers/connection')
+var mapper = require('../../mappers/_obsolete/connection')
 var db = require('mongoose').models
 
 var notify = function (hisProfile, hisConnection, myConnection, myProfile, hasChanged, cb) {
@@ -51,39 +51,39 @@ var updateStatus = async (status, hisProfile, context) => {
     }
 
     switch (status) {
-    case 'blocked':
-        if ('deleted|blocked'.indexOf(connections.my.status) === -1) {
-            connections.my.status = 'blocked'
-            connections.his.status = 'blocked'
-            hasChanged = true
-        }
-        break
-    case 'active':
-        if (connections.my.status === 'inComming') {
-            connections.my.status = 'active'
-            connections.his.status = 'active'
-            hasChanged = true
+        case 'blocked':
+            if ('deleted|blocked'.indexOf(connections.my.status) === -1) {
+                connections.my.status = 'blocked'
+                connections.his.status = 'blocked'
+                hasChanged = true
+            }
+            break
+        case 'active':
+            if (connections.my.status === 'inComming') {
+                connections.my.status = 'active'
+                connections.his.status = 'active'
+                hasChanged = true
 
-            // removing notification for active connection
+                // removing notification for active connection
 
-            var requestNotification = context.profile.notifications.find(notificationBlock => {
-                return notificationBlock.data.entity.id === hisProfile.id &&
+                var requestNotification = context.profile.notifications.find(notificationBlock => {
+                    return notificationBlock.data.entity.id === hisProfile.id &&
                         notificationBlock.data.api === 'connections' &&
                         notificationBlock.data.action === 'inComming'
-            })
+                })
 
-            context.profile.notifications.splice(context.profile.notifications.indexOf(requestNotification), 1)
-        }
-        break
-    case 'deleted':
-        if (connections.my.status !== 'deleted') {
-            connections.my.status = 'deleted'
-            connections.his.status = 'deleted'
-            hasChanged = true
-        }
-        break
-    default:
-        break
+                context.profile.notifications.splice(context.profile.notifications.indexOf(requestNotification), 1)
+            }
+            break
+        case 'deleted':
+            if (connections.my.status !== 'deleted') {
+                connections.my.status = 'deleted'
+                connections.his.status = 'deleted'
+                hasChanged = true
+            }
+            break
+        default:
+            break
     }
     if (hasChanged) {
         await context.profile.save()
@@ -286,10 +286,10 @@ api.cancelRequest = function (req, res) {
             })
         }
     ],
-    function (err) {
-        if (err) {
-            return res.failure(err)
-        }
-        res.success('request deleted')
-    })
+        function (err) {
+            if (err) {
+                return res.failure(err)
+            }
+            res.success('request deleted')
+        })
 }

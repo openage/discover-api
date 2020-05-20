@@ -1,5 +1,8 @@
 'use strict'
+
 global.Promise = require('bluebird')
+process.env.APP = 'api'
+
 const express = require('express')
 const logger = require('@open-age/logger')('bin/api').start('booting')
 const webServerConfig = require('config').get('webServer')
@@ -13,6 +16,8 @@ require('../settings/database').configure(logger)
 require('../settings/express').configure(app, logger)
 require('../settings/routes').configure(app, logger)
 require('../settings/offline-processor').configure(logger)
+
+logger.error('bin/app.js is obsolete - use bin/api')
 
 var port = process.env.PORT || webServerConfig.port
 logger.info(`environment: ${process.env.NODE_ENV} port: ${port}`)

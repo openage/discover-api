@@ -14,6 +14,10 @@ module.exports = {
         description: String,
         coordinates: [Number]
     },
+    reactions: {
+        like: Number,
+        love: Number,
+    },
     images: [{
         order: Number,
         url: String,

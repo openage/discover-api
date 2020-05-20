@@ -1,39 +1,43 @@
 'use strict'
-global.Promise = require( 'bluebird' )
+global.Promise = require('bluebird')
 global.processSync = true
+process.env.APP = 'cron'
 
-const fs = require( 'fs' )
-const logger = require( '@open-age/logger' )( 'cron' )
+const fs = require('fs')
+const logger = require('@open-age/logger')('cron')
+logger.info(`environment: ${process.env.NODE_ENV}`)
 
-require( '../helpers/string' )
-require( '../helpers/number' )
-require( '../helpers/toObjectId' )
-require( '../settings/database' ).configure( logger )
-require( '../settings/offline-processor' ).configure( logger )
+require('../helpers/string')
+require('../helpers/number')
+require('../helpers/toObjectId')
+require('../settings/database').configure(logger)
+require('../settings/offline-processor').configure(logger)
 
-const appRoot = require( 'app-root-path' )
+const appRoot = require('app-root-path')
 
-fs.readdirSync( `${appRoot}/jobs` ).forEach( file => {
-    if ( file.indexOf( '.js' ) <= 0 ) {
-        logger.error( `${file} is not a js file` )
+fs.readdirSync(`${appRoot}/jobs`).forEach(file => {
+    if (file.indexOf('.js') <= 0) {
+        logger.error(`${file} is not a js file`)
         return
     }
-    let fileName = file.substring( 0, file.indexOf( '.js' ) )
+    let fileName = file.substring(0, file.indexOf('.js'))
 
-    var schedule = require( `${appRoot}/jobs/${file}` ).schedule
+    var schedule = require(`${appRoot}/jobs/${file}`).schedule
 
-    if ( !schedule ) {
-        logger.info( `${file} does not have a schedule method` )
+    if (!schedule) {
+        logger.info(`${file} does not have a schedule method`)
         return
     }
 
-    if ( !process.env.CRON_NAME ) {
-        return schedule()
+    let orgCodes = process.env.ORG_CODES ? process.env.ORG_CODES.split(',') : null
+
+    if (!process.env.CRON_NAME) {
+        return schedule(orgCodes)
     }
 
-    if ( process.env.CRON_NAME !== fileName.toLowerCase() ) {
+    if (process.env.CRON_NAME !== fileName.toLowerCase()) {
         return
     }
-    logger.info( `scheduling ${file}` )
-    return schedule()
-} )
+    logger.info(`scheduling ${file}`)
+    return schedule(orgCodes)
+})

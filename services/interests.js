@@ -1,71 +1,75 @@
 'use strict'
 
 const db = require('../models')
+const categories = require('./categories')
 
-const remove = async (id, context) => {
-    let log = context.logger.start('services/interests:remove')
+const populate = 'category'
 
-    let profile = await db.profile.findById(context.profile.id).populate('interests')
+const set = async (model, entity, context) => {
+    if (model.name && entity.name !== model.name.toLowerCase()) {
+        if (await this.get(model.name, context)) {
+            throw new Error(`'${model.name}' already exists`)
+        }
 
-    profile.interests = profile.interests.filter(item => item.id !== id)
-
-    await profile.save()
-}
-
-const create = async (model, context) => {
-    let log = context.logger.start('services/interests:create')
-    if (!model.name) {
-        throw new Error('name is needed')
+        entity.name = model.name.toLowerCase()
     }
 
-    let interest = await db.interest.findOne({
-        name: {
-            $regex: model.name,
-            $options: 'i'
-        },
+    if (model.category) {
+        entity.category = await categories.get(model.category, context)
+    }
+
+    if (model.status) {
+        entity.status = model.status
+    }
+}
+
+exports.create = async (model, context) => {
+    let log = context.logger.start('services/interests:create')
+    if (!model.name) {
+        throw new Error('name is required')
+    }
+
+    let entity = new db.interest({
+        status: 'active',
         tenant: context.tenant
     })
 
-    if (!interest) {
-        interest = await new db.interest({
-            name: model.name,
-            tenant: context.tenant
-        }).save()
-    }
+    await set(model, entity, context)
+    await entity.save()
 
     log.end()
 
-    return interest
+    return entity
 }
 
-const update = async (model, entity, context) => {
+exports.update = async (id, model, context) => {
     context.logger.debug('services/interests:update')
 
-    if (model.name && entity.name.toLowerCase() !== model.name.toLowerCase()) {
-        let exists = await db.interest.findOne({
-            name: {
-                $regex: model.name,
-                $options: 'i'
-            },
-            tenant: context.tenant
-        })
+    let entity = await this.get(id, context)
 
-        if (exists) {
-            throw new Error(`interest with name '${model.name}' already exists`)
-        }
+    await set(model, entity, context)
+    await entity.save()
 
-        entity.name = model.name
-    }
-
-    return entity.save()
+    return entity
 }
 
-const search = async (query, context) => {
+exports.remove = async (id, context) => {
+    let entity = await this.get(id, context)
+    entity.status = 'inactive'
+    await entity.save()
+}
+
+exports.search = async (query, paging, context) => {
     let log = context.logger.start('services/interests:search')
     query = query || {}
 
     let where = {
+        status: 'active',
         tenant: context.tenant
+    }
+
+    if (query.status) {
+        where.status = query.status
     }
 
     if (query.name) {
@@ -75,60 +79,39 @@ const search = async (query, context) => {
         }
     }
 
-    let items = await db.interest.find(where)
+    if (query.category) {
+        where.category = await categories.get(query.category, context)
+    }
+
+    let items = await db.interest.find(where).populate(populate)
 
     log.end()
 
-    return items
+    return {
+        items: items
+    }
 }
 
-const get = async (query, context) => {
-    context.logger.start('get')
-    let entity
+exports.get = async (query, context) => {
+    context.logger.start('services/interests:get')
     if (typeof query === 'string') {
         if (query.isObjectId()) {
-            entity = await db.interest.findById(query)
+            return db.interest.findById(query).populate(populate)
         } else {
-            entity = await db.interest.findOne({
-                name: {
-                    $regex: query.name,
-                    $options: 'i'
-                },
+            return db.interest.findOne({
+                name: query.toLowerCase(),
                 tenant: context.tenant
-            })
-        }
-        if (entity) {
-            return entity
+            }).populate(populate)
         }
     }
     if (query.id) {
-        entity = await db.interest.findById(query.id)
-        if (entity) {
-            return entity
-        }
+        return db.interest.findById(query.id).populate(populate)
     }
 
     if (query.name) {
-        entity = await db.interest.findOne({
-            name: {
-                $regex: query.name,
-                $options: 'i'
-            },
+        return db.interest.findOne({
+            name: query.name.toLowerCase(),
             tenant: context.tenant
-        })
-
-        if (!entity) {
-            entity = await create({
-                name: query.name
-            }, context)
-        }
+        }).populate(populate)
     }
-
-    return entity
 }
-
-exports.get = get
-exports.remove = remove
-exports.create = create
-exports.update = update
-exports.search = search

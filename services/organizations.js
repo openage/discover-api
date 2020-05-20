@@ -1,8 +1,7 @@
 'use strict'
-
 const db = require('../models')
 
-const set = (model, entity, context) => {
+const set = async (model, entity, context) => {
     if (model.name) {
         entity.name = model.name
     }
@@ -11,106 +10,90 @@ const set = (model, entity, context) => {
         entity.shortName = model.shortName
     }
 
-    if (model.about) {
-        entity.about = model.about
-    }
-
-    if (model.address) {
-        entity.address = entity.address || {}
-
-        if (model.address.line1) {
-            entity.address.line1 = model.address.line1
-        }
-
-        if (model.address.line2) (
-            entity.address.line2 = model.address.line2
-        )
-
-        if (model.address.district) {
-            entity.address.district = model.address.district
-        }
-
-        if (model.address.city) {
-            entity.address.city = model.address.city
-        }
-
-        if (model.address.state) {
-            entity.address.state = model.address.state
-        }
-
-        if (model.address.pinCode) {
-            entity.address.pinCode = model.address.pinCode
-        }
-
-        if (model.address.country) {
-            entity.address.country = model.address.country
-        }
-    }
-
-    if (model.location) {
-        entity.location = model.location
-    }
-
     if (model.logo) {
-        entity.logo = model.logo
-    }
-}
-
-const create = async (model, context) => {
-    let entity = await new db.organization({
-        code: model.code
-    }).save()
-
-    set(model, entity, context)
-
-    await entity.save()
-
-    return entity
-}
-
-exports.create = create
-
-const get = async (query, context) => {
-
-    if (typeof query === 'string') {
-        if (query.isObjectId()) {
-            return getById(query, context)
-        } else {
-            return getByCode(query, context)
+        entity.logo = {
+            url: model.logo.url,
+            thumbnail: model.logo.thumbnail
         }
     }
-    if (query.id) {
-        return getById(query.id, context)
+
+    if (model.config) {
+        entity.config = model.config
+    }
+    if (model.status) {
+        entity.status = model.status
+    }
+}
+
+exports.create = async (model, context) => {
+    let organization = new db.organization({
+        code: model.code.toLowerCase(),
+        status: 'active',
+        tenant: context.tenant
+    })
+    await set(model, organization, context)
+    await organization.save()
+    return organization
+}
+
+exports.update = async (id, model, context) => {
+    if (id === 'me' || id === 'my') {
+        id = context.organization.id
     }
 
-    if (query.code) {
-        return getByCode(query.code, context)
+    let entity = await db.organization.findById(id)
+
+    await set(model, entity, context)
+
+    return entity.save()
+}
+
+exports.get = async (query, context) => {
+    context.logger.start('services/organizations:get')
+    let entity
+    let where = {
+        tenant: context.tenant
     }
+    if (typeof query === 'string') {
+        if (query === 'me' || query === 'my') {
+            return context.organization
+        }
+        if (query.isObjectId()) {
+            return db.organization.findById(query)
+        }
+        where['code'] = query
+        return db.organization.findOne(where)
+    } else if (query.id) {
+        if (query.id === 'me' || query.id === 'my') {
+            return context.organization
+        }
+        return db.organization.findById(query.id)
+    } else if (query.code) {
+        where['code'] = query.code
+        return db.organization.findOne(where)
+    }
+
     return null
-
-
 }
 
-exports.get = get
-
-const getById = async (id, context) => {
-    return db.organization.findById(id)
-}
-
-const getByCode = async (code, context) => {
+exports.getByCode = async (code, context) => {
     return db.organization.findOne({
-        code: code
+        code: code.toLowerCase(),
+        tenant: context.tenant
     })
 }
 
-const getOrCreate = async (data, context) => {
-    let entity = await get(data, context)
-
-    if (!entity) {
-        entity = await create(data, context)
+exports.search = async (query, page, context) => {
+    let where = {
+        tenant: context.tenant
     }
-
-    return entity
+    if (!page || !page.limit) {
+        return {
+            items: await db.organization.find(where)
+        }
+    }
+    return {
+        items: await db.organization.find(where).limit(page.limit).skip(page.skip),
+        count: await db.organization.count(where)
+    }
 }
-
-exports.getOrCreate = getOrCreate
