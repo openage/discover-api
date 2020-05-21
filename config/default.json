@@ -4,7 +4,7 @@
         "host": "mongodb://localhost:27017/oa_discover"
     },
     "webServer": {
-        "url": "http://localhost:3007",
+        "url": "https://dev.openage.in/discover",
         "port": 3007
     },
     "queueServer": {
