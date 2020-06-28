@@ -28,8 +28,12 @@ const set = async (model, entity, context) => {
         entity.price = model.price
     }
 
-    if (model.meta && model.meta !== entity.meta) {
-        entity.meta = model.meta
+    if (model.meta) {
+        entity.meta = entity.meta || {}
+        Object.getOwnPropertyNames(model.meta).forEach(key => {
+            entity.meta[key] = model.meta[key]
+        })
+        entity.markModified('meta')
     }
 
     if (model.pic) {
@@ -159,7 +163,6 @@ exports.create = async (model, context) => {
 }
 
 exports.react = async (model, context) => {
-
     if (!model.profile) {
         throw new Error('profile is required')
     }
